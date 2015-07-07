@@ -1,0 +1,115 @@
+#!/usr/bin/perl
+#
+# Small OVL to GPX konverter, currently supporting OVL version 5
+# Copyright (C) 2015  Manuel Reimer <manuel.reimer@gmx.de>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+use strict;
+use warnings;
+use IO::Uncompress::Unzip qw(unzip $UnzipError);
+
+{
+  # Check parameters
+  Usage() if (@ARGV == 0 || $ARGV[0] eq '--help' || $ARGV[0] eq '-h');
+  die("Invalid parameters\n") if (@ARGV != 2);
+  my ($f_in, $f_out) = @ARGV;
+
+  # Read/interpret OVL file
+  my $data = ReadOVL($f_in);
+
+  # Write GPX
+  WriteGPX($data, $f_out);
+}
+
+sub Usage {
+  print "ovl2gpx INPUT_OVL OUTPUT_GPX\n";
+  exit;
+}
+
+# Read OVL file and return contents
+sub ReadOVL {
+  my ($aFile) = @_;
+
+  # At first get content
+  my $content;
+  unzip $aFile => \$content, Name => 'geogrid50.xml'
+    or die("Extracting geogrid50.xml failed: $UnzipError\n");
+
+  # Get objects
+  my @objects = $content =~ /(<object .+?<\/object>)/sg;
+  die("No objects in $aFile\n") if (@objects == 0);
+
+  # Group all coordinates from file
+  # Format: $data{$NAME}->[$SEGMENT]->[0 = x|1 = y]
+  my %data;
+  foreach my $object (@objects) {
+    my ($name) = $object =~ /<name>([^<]*)/ or next;
+    my @coords = $object =~ /(<coord .+?\/>)/sg or next;
+
+    $name = 'NO_NAME_IN_OVL' if ($name eq '');
+
+    my @coordlist;
+    foreach my $coord (@coords) {
+      my ($x) = $coord =~ /x="\s*(.[^"]+)/ or next;
+      my ($y) = $coord =~ /y="\s*(.[^"]+)/ or next;
+      push(@coordlist, [ $x, $y ]);
+    }
+
+    $data{$name} = [] if (!defined $data{$name});
+
+    push(@{$data{$name}}, \@coordlist);
+  }
+
+  return \%data;
+}
+
+# Write the data, fetched by "ReadOVL", in GPX format
+sub WriteGPX {
+  my ($aData, $aFile) = @_;
+
+  open(my $fh, '>', $aFile) or die("Failed to write $aFile: $!\n");
+
+  print $fh <<EOD;
+<?xml version="1.0"?>
+<gpx version="1.0" creator="ovl2gpx.pl -- http://github.com/M-Reimer/ovl2gpx"
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+xmlns="http://www.topografix.com/GPX/1/0"
+xsi:schemaLocation="http://www.topografix.com/GPX/1/0 http://www.topografix.com/GPX/1/0/gpx.xsd">
+EOD
+
+  my @names = sort(keys(%$aData));
+  foreach my $name(@names) {
+    my $data = $aData->{$name};
+    utf8::encode($name);
+
+    print $fh "<trk>\n";
+    print $fh "  <name>$name</name>\n";
+
+    foreach my $segment (@$data) {
+      print $fh "  <trkseg>\n";
+
+      foreach my $coord (@$segment) {
+        print $fh "    <trkpt lat=\"$coord->[1]\" lon=\"$coord->[0]\">\n";
+        print $fh "    </trkpt>\n";
+      }
+
+      print $fh "  </trkseg>\n";
+    }
+
+    print $fh "</trk>\n";
+  }
+
+  print $fh "</gpx>\n";
+}
