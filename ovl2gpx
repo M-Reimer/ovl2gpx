@@ -83,7 +83,7 @@ sub WriteGPX {
 
   print $fh <<EOD;
 <?xml version="1.0"?>
-<gpx version="1.0" creator="ovl2gpx.pl -- http://github.com/M-Reimer/ovl2gpx"
+<gpx version="1.0" creator="ovl2gpx -- http://github.com/M-Reimer/ovl2gpx"
 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 xmlns="http://www.topografix.com/GPX/1/0"
 xsi:schemaLocation="http://www.topografix.com/GPX/1/0 http://www.topografix.com/GPX/1/0/gpx.xsd">
